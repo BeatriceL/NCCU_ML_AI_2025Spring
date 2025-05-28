@@ -90,10 +90,15 @@ st.caption("Made with Streamlit")
 
 df = load_data()
 
-search_tab, edit_tab, plot_tab = st.tabs([
+# 載入模型與 scaler（全域一次）
+model = joblib.load("models/best_lgbm_model.pkl")
+scaler = joblib.load("models/final_scaler.pkl")
+
+search_tab, edit_tab, plot_tab, rank_tab = st.tabs([
     "🔍 員工異常查詢",
     "🛠️ 特徵調整預測",
-    "📊 特徵視覺化分析"
+    "📊 特徵視覺化分析",
+    "📉 風險業務員排行"
 ])
 
 with search_tab:
@@ -178,3 +183,20 @@ with plot_tab:
                 st.image(Image.open(img_path), caption=img_file, use_column_width=True)
     else:
         st.info("尚未產生圖檔，請先執行一次查詢。")
+
+with rank_tab:
+    st.subheader("異常風險最高的前 50 位業務員")
+
+    try:
+        X_all = df.drop(columns=["serial_no", "abnormal_target"])
+        X_all = X_all[scaler.feature_names_in_]
+        X_scaled = scaler.transform(X_all)
+        all_probs = model.predict_proba(X_scaled)[:, 1]
+
+        df["abnormal_prob"] = all_probs
+        top50_df = df.sort_values("abnormal_prob", ascending=False).head(50)[["serial_no", "abnormal_prob"]]
+        top50_df["abnormal_prob"] = top50_df["abnormal_prob"].apply(lambda p: f"{p:.2%}")
+
+        st.table(top50_df.rename(columns={"serial_no": "員工編號", "abnormal_prob": "預測異常機率"}))
+    except Exception as e:
+        st.error(f"發生錯誤：{e}")
